@@ -14,7 +14,7 @@ graph TD
     Subgraph1[1. Identity & Access Management] -->|No Superuser/Root Exposure| Subgraph2[2. OpenSSH & Socket Hardening]
     Subgraph2 -->|Drop-in Overrides + Custom Port| Subgraph3[3. Perimeter Defense & IDS]
     Subgraph3 -->|UFW Default-Deny + Fail2Ban systemd| Subgraph4[4. Automated Lifecycle Patching]
-    Subgraph4 -->|Unattended Upgrades + 04:30 AM Reboots| Subgraph5[5. Container Resource Limits]
+    Subgraph4 -->|Unattended Upgrades + Configurable Reboots| Subgraph5[5. Container Resource Limits]
 ```
 
 ---
@@ -120,10 +120,10 @@ Automated security maintenance ensures that Common Vulnerabilities and Exposures
   ```
 
 ### 4.2. Controlled Maintenance Reboots (`/etc/apt/apt.conf.d/51unattended-upgrades-custom`)
-- **Standard**: Allow automatic reboots **only** during off-peak maintenance windows whenever `/var/run/reboot-required` is flagged:
+- **Standard**: Allow automatic reboots **only** during off-peak maintenance windows whenever `/var/run/reboot-required` is flagged. To prevent reboots during business hours due to UTC defaults, the target timezone (`TIMEZONE`) and maintenance window (`REBOOT_TIME`) are configurable in `vps.env`:
   ```
   Unattended-Upgrade::Automatic-Reboot "true";
-  Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+  Unattended-Upgrade::Automatic-Reboot-Time "04:30"; // Or custom REBOOT_TIME in your TIMEZONE
   ```
 
 ---
@@ -156,5 +156,5 @@ To prevent containerized applications from causing disk exhaustion attacks via u
 | **OpenSSH Listening Port** | Obfuscated non-standard port (`your-preferred-ssh-port/tcp` / configured via `vps.env`) |
 | **Network Perimeter** | UFW `default deny incoming`, whitelisted SSH, HTTP (80), HTTPS (443) |
 | **Intrusion Prevention** | Fail2Ban `sshd` jail enabled via `backend = systemd` (Max 3 retries, 1h ban) |
-| **Security Patching** | Automated daily `unattended-upgrades` with `04:30 AM` reboot policy |
+| **Security Patching** | Automated daily `unattended-upgrades` with configurable `REBOOT_TIME` in local `TIMEZONE` |
 | **Container Logging** | JSON file rotation bounded at `max-size: 10m` (`3` files max) |

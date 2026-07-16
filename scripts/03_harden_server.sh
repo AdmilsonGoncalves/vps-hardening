@@ -48,8 +48,8 @@
 #   6. Patch Management:
 #      - Upgrades system packages (`apt-get upgrade -y`).
 #      - Configures `unattended-upgrades` non-interactively (`20auto-upgrades` and
-#        `51unattended-upgrades-custom`) with automatic maintenance reboots at 04:30 AM
-#        when required by system/kernel updates (`/var/run/reboot-required`).
+#        `51unattended-upgrades-custom`) with automatic maintenance reboots at `${REBOOT_TIME:-04:30}`
+#        in `${TIMEZONE:-system default}` when required (`/var/run/reboot-required`).
 #   7. Docker Log Rotation:
 #      - Safely merges log limits (`max-size: 10m`, `max-file: 3`) into existing
 #        `/etc/docker/daemon.json` using `jq` to prevent overwriting existing keys.
@@ -247,6 +247,22 @@ log_success "Fail2Ban restarted and monitoring port ${SSH_PORT} (backend: ${FAIL
 log_info "Synchronizing package indexes and upgrading system packages..."
 apt-get upgrade -y -qq >/dev/null
 
+# Configure system timezone if specified
+if [[ -n "${TIMEZONE:-}" ]]; then
+    log_info "Configuring system timezone to '${TIMEZONE}'..."
+    if command -v timedatectl >/dev/null 2>&1 && timedatectl list-timezones 2>/dev/null | grep -Fxq "${TIMEZONE}" && timedatectl set-timezone "${TIMEZONE}" 2>/dev/null; then
+        log_success "System timezone configured to ${TIMEZONE} via timedatectl."
+    elif [[ -f "/usr/share/zoneinfo/${TIMEZONE}" ]]; then
+        ln -fs "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime
+        echo "${TIMEZONE}" > /etc/timezone
+        export DEBIAN_FRONTEND=noninteractive
+        dpkg-reconfigure -f noninteractive tzdata >/dev/null 2>&1 || true
+        log_success "System timezone configured to ${TIMEZONE} via /etc/localtime."
+    else
+        log_warn "Timezone '${TIMEZONE}' invalid or unavailable; retaining current system timezone."
+    fi
+fi
+
 log_info "Installing and configuring unattended-upgrades..."
 apt-get install -y -qq unattended-upgrades >/dev/null
 
@@ -257,12 +273,17 @@ APT::Periodic::Unattended-Upgrade "1";
 EOF
 
 # Automated reboot policy for updates requiring reboot (/var/run/reboot-required)
+REBOOT_TIME_CFG="${REBOOT_TIME:-04:30}"
+if ! [[ "${REBOOT_TIME_CFG}" =~ ^(now|\+[0-9]+|([01][0-9]|2[0-3]):[0-5][0-9])$ ]]; then
+    log_warn "Invalid REBOOT_TIME '${REBOOT_TIME_CFG}' (must be HH:MM, now, or +m). Falling back to safe default '04:30'."
+    REBOOT_TIME_CFG="04:30"
+fi
 cat <<EOF > /etc/apt/apt.conf.d/51unattended-upgrades-custom
 // Custom overrides for unattended security and system updates
 Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+Unattended-Upgrade::Automatic-Reboot-Time "${REBOOT_TIME_CFG}";
 EOF
-log_success "Unattended upgrades and 04:30 AM reboot policy active."
+log_success "Unattended upgrades and ${REBOOT_TIME_CFG} (${TIMEZONE:-local time}) reboot policy active."
 
 # --- Step 9: Docker Resource Hardening ---
 log_info "Checking and configuring Docker daemon log rotation rules..."
@@ -313,7 +334,7 @@ echo -e "  * Root Login   : ${RED}DISABLED${NC}"
 echo -e "  * Pass & KBD   : ${RED}DISABLED${NC} (Password & PAM Keyboard-Interactive)"
 echo -e "  * UFW Firewall : ${GREEN}ACTIVE${NC} (${SSH_PORT}/tcp, 80/tcp, 443/tcp whitelisted, 22 cleaned)"
 echo -e "  * Fail2Ban     : ${GREEN}ACTIVE${NC} (Max 3 retries, 1 hour ban)"
-echo -e "  * Auto Patch   : ${GREEN}ACTIVE${NC} (Unattended upgrades + 04:30 AM maintenance reboot)"
+echo -e "  * Auto Patch   : ${GREEN}ACTIVE${NC} (Unattended upgrades + ${REBOOT_TIME:-04:30} [${TIMEZONE:-local}] reboot)"
 echo -e ""
 echo -e "Next Step: Run the post-audit check to verify all services and listening states:"
 echo -e "   ${BLUE}sudo ./04_post_audit.sh ${SSH_PORT}${NC}"

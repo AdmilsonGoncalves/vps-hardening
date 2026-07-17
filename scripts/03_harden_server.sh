@@ -128,7 +128,8 @@ log_info "Backed up /etc/ssh/sshd_config to ${BACKUP_PATH}"
 
 # 4.2 Create drop-in hardening configuration
 mkdir -p /etc/ssh/sshd_config.d
-cat <<EOF > /etc/ssh/sshd_config.d/99-vps-hardening.conf
+rm -f /etc/ssh/sshd_config.d/99-vps-hardening.conf 2>/dev/null || true
+cat <<EOF > /etc/ssh/sshd_config.d/00-vps-hardening.conf
 # Automated VPS Hardening Override (`date +%F`)
 Port ${SSH_PORT}
 PermitRootLogin no
@@ -137,7 +138,7 @@ KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 MaxAuthTries 3
 EOF
-chmod 644 /etc/ssh/sshd_config.d/99-vps-hardening.conf
+chmod 644 /etc/ssh/sshd_config.d/00-vps-hardening.conf
 
 # Ensure main config includes drop-in directory
 if ! grep -Eq "^Include /etc/ssh/sshd_config.d/\*.conf" /etc/ssh/sshd_config; then
@@ -148,11 +149,11 @@ fi
 mkdir -p /run/sshd && chmod 0755 /run/sshd 2>/dev/null || true
 if ! sshd -t; then
     log_error "OpenSSH configuration syntax check failed! Rolling back changes..."
-    rm -f /etc/ssh/sshd_config.d/99-vps-hardening.conf
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
     cp "${BACKUP_PATH}" /etc/ssh/sshd_config
     exit 1
 fi
-log_success "OpenSSH syntax check passed (`sshd -t`)."
+log_success "OpenSSH syntax check passed ('sshd -t')."
 
 # 4.4 Systemd Socket Activation (Ubuntu 24.04 handling)
 SOCKET_ACTIVATED=false
@@ -310,7 +311,7 @@ chmod 644 "${DAEMON_JSON}"
 if command -v docker >/dev/null 2>&1 && systemctl is-active docker >/dev/null 2>&1; then
     log_info "Docker service active. Restarting Docker daemon to apply log limits..."
     systemctl restart docker
-    log_success "Docker log limits applied (`max-size: 10m`, `max-file: 3`)."
+    log_success "Docker log limits applied ('max-size: 10m', 'max-file: 3')."
     log_info "Note: New log rotation limits apply to newly created containers."
 else
     log_info "Docker is not currently active on this VPS. ${DAEMON_JSON} configured for future container execution."

@@ -157,17 +157,10 @@ log_success "OpenSSH syntax check passed (`sshd -t`)."
 # 4.4 Systemd Socket Activation (Ubuntu 24.04 handling)
 SOCKET_ACTIVATED=false
 if systemctl list-unit-files 2>/dev/null | grep -qw "ssh.socket"; then
-    SOCKET_ACTIVATED=true
-    log_info "Detected systemd socket activation for SSH (ssh.socket). Creating override..."
-    mkdir -p /etc/systemd/system/ssh.socket.d
-    cat <<EOF > /etc/systemd/system/ssh.socket.d/override.conf
-[Socket]
-# The empty ListenStream= line is strictly REQUIRED by systemd to clear default port 22
-ListenStream=
-ListenStream=${SSH_PORT}
-EOF
-    chmod 644 /etc/systemd/system/ssh.socket.d/override.conf
-    log_success "Configured socket override at /etc/systemd/system/ssh.socket.d/override.conf"
+    log_info "Detected systemd socket activation (ssh.socket). Disabling in favor of standalone ssh.service for dual-stack IPv4/IPv6 binding and Fail2Ban compatibility..."
+    systemctl disable --now ssh.socket >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/ssh.socket.d/override.conf >/dev/null 2>&1 || true
+    log_success "Disabled systemd socket activation and switched to dedicated ssh.service daemon."
 fi
 
 # --- Step 5: Perimeter Defense (Firewall Baseline) ---
@@ -208,12 +201,11 @@ log_info "Reloading systemd daemon and restarting SSH services..."
 systemctl daemon-reload
 
 if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
-    # On socket-activated systems (Ubuntu 24.04), ssh.socket owns the socket and launches
-    # ssh.service on demand. Do NOT start ssh.service explicitly to avoid binding conflicts.
     log_info "Restarting systemd socket unit (ssh.socket)..."
     systemctl stop ssh.service >/dev/null 2>&1 || true
     systemctl restart ssh.socket
 else
+    systemctl enable --now ssh.service >/dev/null 2>&1 || systemctl enable --now sshd.service >/dev/null 2>&1 || true
     systemctl restart ssh.service || systemctl restart sshd.service
 fi
 

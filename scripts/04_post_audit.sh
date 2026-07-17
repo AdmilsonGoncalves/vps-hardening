@@ -67,11 +67,15 @@ echo -e "${BLUE}================================================================
 
 # --- Check 1: SSH Configuration Syntax ---
 # Ensure privilege separation directory exists (required by sshd -t when socket activation is idle)
-mkdir -p /run/sshd && chmod 0755 /run/sshd 2>/dev/null || true
-if sshd -t 2>/dev/null; then
-    log_pass "OpenSSH configuration syntax is valid."
+if mkdir -p /run/sshd 2>/dev/null && chmod 0755 /run/sshd 2>/dev/null; then
+    if sshd -t 2>/dev/null; then
+        log_pass "OpenSSH configuration syntax is valid."
+    else
+        log_fail "OpenSSH configuration syntax check ('sshd -t') reported errors!"
+        ((FAILURES++))
+    fi
 else
-    log_fail "OpenSSH configuration syntax check ('sshd -t') reported errors!"
+    log_fail "Failed to prepare privilege separation directory /run/sshd (check root permissions)."
     ((FAILURES++))
 fi
 

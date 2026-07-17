@@ -159,8 +159,12 @@ log_success "OpenSSH syntax check passed ('sshd -t')."
 SOCKET_ACTIVATED=false
 if systemctl list-unit-files 2>/dev/null | grep -qw "ssh.socket"; then
     log_info "Detected systemd socket activation (ssh.socket). Disabling in favor of standalone ssh.service for dual-stack IPv4/IPv6 binding and Fail2Ban compatibility..."
-    systemctl disable --now ssh.socket >/dev/null 2>&1 || true
-    rm -f /etc/systemd/system/ssh.socket.d/override.conf >/dev/null 2>&1 || true
+    if ! systemctl disable --now ssh.socket >/dev/null 2>&1; then
+        log_error "Failed to disable ssh.socket! Aborting before SSH is disrupted..."
+        exit 1
+    fi
+    rm -f /etc/systemd/system/ssh.socket.d/override.conf 2>/dev/null || true
+    SOCKET_ACTIVATED=true
     log_success "Disabled systemd socket activation and switched to dedicated ssh.service daemon."
 fi
 
@@ -201,16 +205,45 @@ log_success "UFW enabled and active."
 log_info "Reloading systemd daemon and restarting SSH services..."
 systemctl daemon-reload
 
-if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
-    log_info "Restarting systemd socket unit (ssh.socket)..."
-    systemctl stop ssh.service >/dev/null 2>&1 || true
-    systemctl restart ssh.socket
-else
-    systemctl enable --now ssh.service >/dev/null 2>&1 || systemctl enable --now sshd.service >/dev/null 2>&1 || true
-    systemctl restart ssh.service || systemctl restart sshd.service
+SSH_SERVICE_UNIT="ssh.service"
+if ! systemctl list-unit-files 2>/dev/null | grep -qw "ssh.service"; then
+    SSH_SERVICE_UNIT="sshd.service"
 fi
 
-log_success "SSH service successfully reinitialized on port ${SSH_PORT}."
+if ! systemctl enable --now "${SSH_SERVICE_UNIT}" 2>/dev/null; then
+    log_error "Failed to enable and start ${SSH_SERVICE_UNIT}! Attempting rollback..."
+    if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
+        systemctl enable --now ssh.socket 2>/dev/null || true
+    fi
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
+    cp "${BACKUP_PATH}" /etc/ssh/sshd_config
+    systemctl daemon-reload && systemctl restart "${SSH_SERVICE_UNIT}" 2>/dev/null || true
+    exit 1
+fi
+
+if ! systemctl restart "${SSH_SERVICE_UNIT}"; then
+    log_error "Failed to restart ${SSH_SERVICE_UNIT}! Rolling back SSH configuration..."
+    if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
+        systemctl enable --now ssh.socket 2>/dev/null || true
+    fi
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
+    cp "${BACKUP_PATH}" /etc/ssh/sshd_config
+    systemctl daemon-reload && systemctl restart "${SSH_SERVICE_UNIT}" 2>/dev/null || true
+    exit 1
+fi
+
+if ! systemctl is-active --quiet "${SSH_SERVICE_UNIT}"; then
+    log_error "Service ${SSH_SERVICE_UNIT} is not active after restart! Rolling back..."
+    if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
+        systemctl enable --now ssh.socket 2>/dev/null || true
+    fi
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
+    cp "${BACKUP_PATH}" /etc/ssh/sshd_config
+    systemctl daemon-reload && systemctl restart "${SSH_SERVICE_UNIT}" 2>/dev/null || true
+    exit 1
+fi
+
+log_success "SSH service (${SSH_SERVICE_UNIT}) successfully reinitialized and verified active on port ${SSH_PORT}."
 
 # --- Step 7: Fail2Ban Orchestration ---
 log_info "Installing and configuring Fail2Ban intrusion detection..."

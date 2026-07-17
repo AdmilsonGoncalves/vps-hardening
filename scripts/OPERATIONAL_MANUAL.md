@@ -20,6 +20,10 @@ PUBKEY_SOURCE="/root/.ssh/authorized_keys"
 
 # Obfuscated SSH listening port for OpenSSH daemon and socket overrides (REQUIRED)
 SSH_PORT="" # e.g. "your-preferred-ssh-port"
+
+# System Timezone and local maintenance reboot window
+TIMEZONE="America/Sao_Paulo"
+REBOOT_TIME="04:30"
 ```
 
 > [!TIP]
@@ -50,7 +54,8 @@ graph TD
 - **Purpose**: Provisions an unprivileged administrative user with `sudo` escalation capabilities and configures Public Key Infrastructure (PKI) authentication (`authorized_keys`), eliminating direct `root` access.
 - **Key Capabilities**:
   - Non-interactive account creation (`useradd -m -s /bin/bash`) and `sudo` group membership assignment.
-  - Automatic injection of public keys from `/root/.ssh/authorized_keys` or a user-specified public key file.
+  - Automatically checks `/etc/shadow` and interactively prompts to set a secure Unix password (`passwd`) if the account lacks one, ensuring smooth execution of `sudo -v` during login verification.
+  - Automatic injection of public keys from `ADMIN_USER_PUBKEY` (`vps.env`), `/root/.ssh/authorized_keys`, or a user-specified public key file.
   - Enforces strict OpenSSH directory/file permissions (`700` for `.ssh/` and `600` for `authorized_keys`).
 - **Usage**:
   ```bash
@@ -85,7 +90,7 @@ graph TD
     - Automatically configures systemd socket activation (`ssh.socket` on Ubuntu 24.04+) at `/etc/systemd/system/ssh.socket.d/override.conf`.
   - **Perimeter Defense (UFW)**: Sets `default deny incoming` / `default allow outgoing`, whitelisting only the target SSH port, HTTP (`80`), and HTTPS (`443`).
   - **Fail2Ban IDS**: Configures `/etc/fail2ban/jail.local` monitoring the target SSH port with `backend = systemd` for native systemd-journald compatibility on Ubuntu 24.04.
-  - **Automated Patch Management**: Pre-seeds non-interactive `unattended-upgrades` configuration and schedules automatic security reboots at `04:30 AM` when required by kernel updates.
+  - **Automated Patch Management**: Pre-seeds non-interactive `unattended-upgrades` configuration, applies custom `TIMEZONE`, and schedules automatic security reboots at `REBOOT_TIME` when required by kernel updates.
   - **Docker Resource Limits**: Sets default container log rotation in `/etc/docker/daemon.json` (`max-size: 10m`, `max-file: 3`).
 - **Usage**:
   ```bash

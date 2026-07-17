@@ -75,7 +75,7 @@ fi
 if sudo -l -U "${ADMIN_USER}" >/dev/null 2>&1; then
     log_pass "User '${ADMIN_USER}' has valid sudo command execution privileges."
 else
-    log_fail "User '${ADMIN_USER}' failed sudo privilege check (`sudo -l -U ${ADMIN_USER}`)."
+    log_fail "User '${ADMIN_USER}' failed sudo privilege check ('sudo -l -U ${ADMIN_USER}')."
     ((ERRORS++))
 fi
 

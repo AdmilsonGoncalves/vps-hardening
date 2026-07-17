@@ -54,7 +54,8 @@ graph TD
 - **Purpose**: Provisions an unprivileged administrative user with `sudo` escalation capabilities and configures Public Key Infrastructure (PKI) authentication (`authorized_keys`), eliminating direct `root` access.
 - **Key Capabilities**:
   - Non-interactive account creation (`useradd -m -s /bin/bash`) and `sudo` group membership assignment.
-  - Automatic injection of public keys from `/root/.ssh/authorized_keys` or a user-specified public key file.
+  - Automatically checks `/etc/shadow` and interactively prompts to set a secure Unix password (`passwd`) if the account lacks one, ensuring smooth execution of `sudo -v` during login verification.
+  - Automatic injection of public keys from `ADMIN_USER_PUBKEY` (`vps.env`), `/root/.ssh/authorized_keys`, or a user-specified public key file.
   - Enforces strict OpenSSH directory/file permissions (`700` for `.ssh/` and `600` for `authorized_keys`).
 - **Usage**:
   ```bash

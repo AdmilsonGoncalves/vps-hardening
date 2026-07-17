@@ -29,6 +29,7 @@ Direct superuser (`root`) exposure over network interfaces represents the primar
   ```bash
   useradd -m -s /bin/bash vpsadmin
   usermod -aG sudo vpsadmin
+  passwd vpsadmin # Required for subsequent sudo execution inside session
   ```
   *(Note: `vpsadmin` is the default baseline username defined in [`scripts/vps.env`](file:///home/admilson/IdeaProjects/vps-hardening/scripts/vps.env).)*
 

@@ -77,6 +77,19 @@ log_info "Adding '${ADMIN_USER}' to the 'sudo' group..."
 usermod -aG sudo "${ADMIN_USER}"
 log_success "User '${ADMIN_USER}' granted sudo group privileges."
 
+# Check if user account has a locked/missing password (`!` or `*` in /etc/shadow)
+USER_SHADOW=$(awk -F: -v u="${ADMIN_USER}" '$1==u {print $2}' /etc/shadow 2>/dev/null || echo "")
+if [[ "${USER_SHADOW}" =~ ^[!*] ]] || [[ -z "${USER_SHADOW}" ]]; then
+    echo ""
+    log_warn "User '${ADMIN_USER}' currently has NO Unix password configured."
+    log_warn "A Unix password is required by Linux security standards whenever '${ADMIN_USER}' executes 'sudo -v'."
+    log_info "Please enter and confirm a secure sudo password for '${ADMIN_USER}' below:"
+    passwd "${ADMIN_USER}"
+    log_success "Sudo password successfully configured for '${ADMIN_USER}'."
+else
+    log_info "User '${ADMIN_USER}' already has a valid Unix password configured."
+fi
+
 # --- Step 4: SSH Key-Based Authentication Setup ---
 USER_HOME=$(eval echo "~${ADMIN_USER}")
 SSH_DIR="${USER_HOME}/.ssh"
@@ -118,7 +131,7 @@ echo -e ""
 echo -e "1. Open a ${GREEN}NEW TERMINAL WINDOW${NC} on your local workstation."
 echo -e "2. Test SSH login using port 22 (current port):"
 echo -e "   ${BLUE}ssh -p 22 ${ADMIN_USER}@$(hostname -I | awk '{print $1}' 2>/dev/null || echo '<server-ip>')${NC}"
-echo -e "3. Verify sudo access inside the new session:"
+echo -e "3. Verify sudo access inside the new session (enter the password you just configured):"
 echo -e "   ${BLUE}sudo -v${NC}"
 echo -e ""
 echo -e "Alternatively, run the verification check script right now:"

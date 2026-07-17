@@ -145,6 +145,7 @@ if ! grep -Eq "^Include /etc/ssh/sshd_config.d/\*.conf" /etc/ssh/sshd_config; th
 fi
 
 # 4.3 Validate sshd configuration syntax
+mkdir -p /run/sshd && chmod 0755 /run/sshd 2>/dev/null || true
 if ! sshd -t; then
     log_error "OpenSSH configuration syntax check failed! Rolling back changes..."
     rm -f /etc/ssh/sshd_config.d/99-vps-hardening.conf

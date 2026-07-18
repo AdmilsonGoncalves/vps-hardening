@@ -67,11 +67,15 @@ echo -e "${BLUE}================================================================
 
 # --- Check 1: SSH Configuration Syntax ---
 # Ensure privilege separation directory exists (required by sshd -t when socket activation is idle)
-mkdir -p /run/sshd && chmod 0755 /run/sshd 2>/dev/null || true
-if sshd -t 2>/dev/null; then
-    log_pass "OpenSSH configuration syntax is valid."
+if mkdir -p /run/sshd 2>/dev/null && chmod 0755 /run/sshd 2>/dev/null; then
+    if sshd -t 2>/dev/null; then
+        log_pass "OpenSSH configuration syntax is valid."
+    else
+        log_fail "OpenSSH configuration syntax check ('sshd -t') reported errors!"
+        ((FAILURES++))
+    fi
 else
-    log_fail "OpenSSH configuration syntax check (`sshd -t`) reported errors!"
+    log_fail "Failed to prepare privilege separation directory /run/sshd (check root permissions)."
     ((FAILURES++))
 fi
 
@@ -89,9 +93,9 @@ if command -v sshd >/dev/null 2>&1; then
 
     # Root Login Check
     if echo "${EFFECTIVE_CONFIG}" | grep -Ei "^permitrootlogin no$" >/dev/null; then
-        log_pass "OpenSSH root login (`PermitRootLogin`) is explicitly disabled."
+        log_pass "OpenSSH root login ('PermitRootLogin') is explicitly disabled."
     else
-        log_fail "OpenSSH root login is NOT disabled (`permitrootlogin` != no)."
+        log_fail "OpenSSH root login is NOT disabled ('permitrootlogin' != no)."
         ((FAILURES++))
     fi
 
@@ -125,8 +129,12 @@ fi
 
 if ss -tulpn 2>/dev/null | grep -q ":22 "; then
     if [[ "${EXPECTED_PORT}" != "22" ]]; then
-        log_fail "Standard SSH port 22 is STILL open and listening!"
-        ((FAILURES++))
+        if ! systemctl is-active --quiet ssh.socket 2>/dev/null && grep -qi "port ${EXPECTED_PORT}" /etc/ssh/sshd_config.d/00-vps-hardening.conf 2>/dev/null; then
+            log_warn "Standard SSH port 22 is currently held by a left-over process from initial boot (KillMode=process). It will automatically close on next system reboot."
+        else
+            log_fail "Standard SSH port 22 is STILL open and listening!"
+            ((FAILURES++))
+        fi
     fi
 else
     if [[ "${EXPECTED_PORT}" != "22" ]]; then
@@ -146,7 +154,7 @@ if command -v ufw >/dev/null 2>&1; then
             ((FAILURES++))
         fi
     else
-        log_fail "UFW firewall is NOT active (`ufw status` != active)."
+        log_fail "UFW firewall is NOT active ('ufw status' != active)."
         ((FAILURES++))
     fi
 else
@@ -168,26 +176,26 @@ else
     ((FAILURES++))
 fi
 
-# --- Check 9: Automated Security Updates (`unattended-upgrades`) ---
+# --- Check 9: Automated Security Updates ('unattended-upgrades') ---
 if [[ -f "/etc/apt/apt.conf.d/20auto-upgrades" ]] && grep -Eq 'APT::Periodic::Unattended-Upgrade "1";' /etc/apt/apt.conf.d/20auto-upgrades; then
-    log_pass "Unattended-upgrades is pre-seeded and enabled (`20auto-upgrades`)."
+    log_pass "Unattended-upgrades is pre-seeded and enabled ('20auto-upgrades')."
 else
-    log_fail "Unattended-upgrades configuration not found or disabled (`20auto-upgrades`)."
+    log_fail "Unattended-upgrades configuration not found or disabled ('20auto-upgrades')."
     ((FAILURES++))
 fi
 
 if [[ -f "/etc/apt/apt.conf.d/51unattended-upgrades-custom" ]] && grep -Eq 'Automatic-Reboot "true";' /etc/apt/apt.conf.d/51unattended-upgrades-custom; then
-    log_pass "Automatic maintenance reboots are configured (`51unattended-upgrades-custom`)."
+    log_pass "Automatic maintenance reboots are configured ('51unattended-upgrades-custom')."
 else
-    log_warn "Automatic reboot override check warning (`51unattended-upgrades-custom` missing or not true)."
+    log_warn "Automatic reboot override check warning ('51unattended-upgrades-custom' missing or not true)."
     ((WARNINGS++))
 fi
 
 # --- Check 10: Docker Log Rotation ---
 if [[ -f "/etc/docker/daemon.json" ]] && grep -q '"max-size"' /etc/docker/daemon.json; then
-    log_pass "Docker daemon configuration `/etc/docker/daemon.json` contains log rotation rules."
+    log_pass "Docker daemon configuration '/etc/docker/daemon.json' contains log rotation rules."
 else
-    log_warn "Docker log rotation configuration (`daemon.json`) is missing."
+    log_warn "Docker log rotation configuration ('daemon.json') is missing."
     ((WARNINGS++))
 fi
 

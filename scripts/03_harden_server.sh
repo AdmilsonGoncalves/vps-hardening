@@ -128,7 +128,8 @@ log_info "Backed up /etc/ssh/sshd_config to ${BACKUP_PATH}"
 
 # 4.2 Create drop-in hardening configuration
 mkdir -p /etc/ssh/sshd_config.d
-cat <<EOF > /etc/ssh/sshd_config.d/99-vps-hardening.conf
+rm -f /etc/ssh/sshd_config.d/99-vps-hardening.conf 2>/dev/null || true
+cat <<EOF > /etc/ssh/sshd_config.d/00-vps-hardening.conf
 # Automated VPS Hardening Override (`date +%F`)
 Port ${SSH_PORT}
 PermitRootLogin no
@@ -137,7 +138,7 @@ KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 MaxAuthTries 3
 EOF
-chmod 644 /etc/ssh/sshd_config.d/99-vps-hardening.conf
+chmod 644 /etc/ssh/sshd_config.d/00-vps-hardening.conf
 
 # Ensure main config includes drop-in directory
 if ! grep -Eq "^Include /etc/ssh/sshd_config.d/\*.conf" /etc/ssh/sshd_config; then
@@ -148,26 +149,23 @@ fi
 mkdir -p /run/sshd && chmod 0755 /run/sshd 2>/dev/null || true
 if ! sshd -t; then
     log_error "OpenSSH configuration syntax check failed! Rolling back changes..."
-    rm -f /etc/ssh/sshd_config.d/99-vps-hardening.conf
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
     cp "${BACKUP_PATH}" /etc/ssh/sshd_config
     exit 1
 fi
-log_success "OpenSSH syntax check passed (`sshd -t`)."
+log_success "OpenSSH syntax check passed ('sshd -t')."
 
 # 4.4 Systemd Socket Activation (Ubuntu 24.04 handling)
 SOCKET_ACTIVATED=false
 if systemctl list-unit-files 2>/dev/null | grep -qw "ssh.socket"; then
+    log_info "Detected systemd socket activation (ssh.socket). Disabling in favor of standalone ssh.service for dual-stack IPv4/IPv6 binding and Fail2Ban compatibility..."
+    if ! systemctl disable --now ssh.socket >/dev/null 2>&1; then
+        log_error "Failed to disable ssh.socket! Aborting before SSH is disrupted..."
+        exit 1
+    fi
+    rm -f /etc/systemd/system/ssh.socket.d/override.conf 2>/dev/null || true
     SOCKET_ACTIVATED=true
-    log_info "Detected systemd socket activation for SSH (ssh.socket). Creating override..."
-    mkdir -p /etc/systemd/system/ssh.socket.d
-    cat <<EOF > /etc/systemd/system/ssh.socket.d/override.conf
-[Socket]
-# The empty ListenStream= line is strictly REQUIRED by systemd to clear default port 22
-ListenStream=
-ListenStream=${SSH_PORT}
-EOF
-    chmod 644 /etc/systemd/system/ssh.socket.d/override.conf
-    log_success "Configured socket override at /etc/systemd/system/ssh.socket.d/override.conf"
+    log_success "Disabled systemd socket activation and switched to dedicated ssh.service daemon."
 fi
 
 # --- Step 5: Perimeter Defense (Firewall Baseline) ---
@@ -207,17 +205,45 @@ log_success "UFW enabled and active."
 log_info "Reloading systemd daemon and restarting SSH services..."
 systemctl daemon-reload
 
-if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
-    # On socket-activated systems (Ubuntu 24.04), ssh.socket owns the socket and launches
-    # ssh.service on demand. Do NOT start ssh.service explicitly to avoid binding conflicts.
-    log_info "Restarting systemd socket unit (ssh.socket)..."
-    systemctl stop ssh.service >/dev/null 2>&1 || true
-    systemctl restart ssh.socket
-else
-    systemctl restart ssh.service || systemctl restart sshd.service
+SSH_SERVICE_UNIT="ssh.service"
+if ! systemctl list-unit-files 2>/dev/null | grep -qw "ssh.service"; then
+    SSH_SERVICE_UNIT="sshd.service"
 fi
 
-log_success "SSH service successfully reinitialized on port ${SSH_PORT}."
+if ! systemctl enable --now "${SSH_SERVICE_UNIT}" 2>/dev/null; then
+    log_error "Failed to enable and start ${SSH_SERVICE_UNIT}! Attempting rollback..."
+    if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
+        systemctl enable --now ssh.socket 2>/dev/null || true
+    fi
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
+    cp "${BACKUP_PATH}" /etc/ssh/sshd_config
+    systemctl daemon-reload && systemctl restart "${SSH_SERVICE_UNIT}" 2>/dev/null || true
+    exit 1
+fi
+
+if ! systemctl restart "${SSH_SERVICE_UNIT}"; then
+    log_error "Failed to restart ${SSH_SERVICE_UNIT}! Rolling back SSH configuration..."
+    if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
+        systemctl enable --now ssh.socket 2>/dev/null || true
+    fi
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
+    cp "${BACKUP_PATH}" /etc/ssh/sshd_config
+    systemctl daemon-reload && systemctl restart "${SSH_SERVICE_UNIT}" 2>/dev/null || true
+    exit 1
+fi
+
+if ! systemctl is-active --quiet "${SSH_SERVICE_UNIT}"; then
+    log_error "Service ${SSH_SERVICE_UNIT} is not active after restart! Rolling back..."
+    if [[ "${SOCKET_ACTIVATED}" == "true" ]]; then
+        systemctl enable --now ssh.socket 2>/dev/null || true
+    fi
+    rm -f /etc/ssh/sshd_config.d/00-vps-hardening.conf
+    cp "${BACKUP_PATH}" /etc/ssh/sshd_config
+    systemctl daemon-reload && systemctl restart "${SSH_SERVICE_UNIT}" 2>/dev/null || true
+    exit 1
+fi
+
+log_success "SSH service (${SSH_SERVICE_UNIT}) successfully reinitialized and verified active on port ${SSH_PORT}."
 
 # --- Step 7: Fail2Ban Orchestration ---
 log_info "Installing and configuring Fail2Ban intrusion detection..."
@@ -318,7 +344,7 @@ chmod 644 "${DAEMON_JSON}"
 if command -v docker >/dev/null 2>&1 && systemctl is-active docker >/dev/null 2>&1; then
     log_info "Docker service active. Restarting Docker daemon to apply log limits..."
     systemctl restart docker
-    log_success "Docker log limits applied (`max-size: 10m`, `max-file: 3`)."
+    log_success "Docker log limits applied ('max-size: 10m', 'max-file: 3')."
     log_info "Note: New log rotation limits apply to newly created containers."
 else
     log_info "Docker is not currently active on this VPS. ${DAEMON_JSON} configured for future container execution."

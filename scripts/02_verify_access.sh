@@ -118,6 +118,8 @@ fi
 echo -e "${BLUE}==============================================================================${NC}"
 if [[ ${ERRORS} -eq 0 ]]; then
     echo -e "${GREEN}All pre-hardening checks PASSED!${NC}"
+    log_warn "OPERATIONAL NOTE: Ensure you run Stage 3 (03_harden_server.sh) strictly from your primary root session."
+    log_warn "Parallel SSH sessions on port 22 will freeze when UFW activates, which can delay or block clean SSH daemon restart."
     echo -e "You can now safely proceed to run: ${BLUE}sudo ./03_harden_server.sh [ssh_port]${NC}"
     exit 0
 else

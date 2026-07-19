@@ -83,6 +83,7 @@ fi
 
 SSH_PORT="${1:-${SSH_PORT:-}}"
 FORCE_FLAG="${2:-}"
+EXTRA_PORTS="${UFW_ALLOWED_PORTS-80/tcp 443/tcp}"
 
 if [[ -z "${SSH_PORT}" || "${SSH_PORT}" =~ ^your-prefer?red-ssh-port$ || ! "${SSH_PORT}" =~ ^[0-9]+$ || "${SSH_PORT}" -lt 1024 || "${SSH_PORT}" -gt 65535 ]]; then
     log_error "CRITICAL CONFIGURATION ERROR: Target SSH_PORT ('${SSH_PORT:-<empty>}') is invalid or not configured."
@@ -192,10 +193,18 @@ ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
 
 # Allow essential ports
-log_info "Whitelisting ports: ${SSH_PORT}/tcp (SSH), 80/tcp (HTTP), 443/tcp (HTTPS)..."
+log_info "Whitelisting target SSH port: ${SSH_PORT}/tcp..."
 ufw allow "${SSH_PORT}/tcp" comment 'Obfuscated SSH Port' >/dev/null
-ufw allow 80/tcp comment 'HTTP ACME Challenge/Redirects' >/dev/null
-ufw allow 443/tcp comment 'HTTPS Portal & API' >/dev/null
+
+if [[ -n "${EXTRA_PORTS}" ]]; then
+    log_info "Whitelisting additional firewall rules (${EXTRA_PORTS})..."
+    for port_rule in ${EXTRA_PORTS}; do
+        port_clean=$(echo "${port_rule}" | tr -d ' ')
+        if [[ -n "${port_clean}" ]]; then
+            ufw allow "${port_clean}" comment 'User Whitelisted Port' >/dev/null
+        fi
+    done
+fi
 
 # Enable firewall non-interactively
 ufw --force enable >/dev/null
@@ -359,7 +368,7 @@ echo -e "Summary of Active Protections:"
 echo -e "  * OpenSSH Port : ${YELLOW}${SSH_PORT}${NC}"
 echo -e "  * Root Login   : ${RED}DISABLED${NC}"
 echo -e "  * Pass & KBD   : ${RED}DISABLED${NC} (Password & PAM Keyboard-Interactive)"
-echo -e "  * UFW Firewall : ${GREEN}ACTIVE${NC} (${SSH_PORT}/tcp, 80/tcp, 443/tcp whitelisted, 22 cleaned)"
+echo -e "  * UFW Firewall : ${GREEN}ACTIVE${NC} (${SSH_PORT}/tcp ${EXTRA_PORTS:-} whitelisted, 22 cleaned)"
 echo -e "  * Fail2Ban     : ${GREEN}ACTIVE${NC} (Max 3 retries, 1 hour ban)"
 echo -e "  * Auto Patch   : ${GREEN}ACTIVE${NC} (Unattended upgrades + ${REBOOT_TIME:-04:30} [${TIMEZONE:-local}] reboot)"
 echo -e ""

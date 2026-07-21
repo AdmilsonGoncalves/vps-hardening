@@ -184,7 +184,7 @@ export NVM_DIR="$HOME/.nvm"
 
 # --- Custom System & Maintenance Aliases ---
 # Memory & Swap Reclamation (Requires sudo)
-alias clear_swap='sudo swapoff -a && sudo swapon -a && sync && echo 3 | sudo tee /proc/sys/vm/drop_caches'
+alias clear-swap='sudo swapoff -a && sudo swapon -a && sync && echo 3 | sudo tee /proc/sys/vm/drop_caches'
 
 # System Routine Upgrade (Safe upgrade without removing packages)
 alias sys-upgrade='sudo apt update && sudo apt upgrade -y && (sudo snap refresh 2>/dev/null || true)'

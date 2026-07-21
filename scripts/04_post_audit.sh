@@ -51,6 +51,7 @@ if [[ -f "${SCRIPT_DIR}/vps.env" ]]; then
 fi
 
 EXPECTED_PORT="${1:-${SSH_PORT:-}}"
+EXTRA_PORTS="${UFW_ALLOWED_PORTS-80/tcp 443/tcp}"
 
 if [[ -z "${EXPECTED_PORT}" || "${EXPECTED_PORT}" =~ ^your-prefer?red-ssh-port$ || ! "${EXPECTED_PORT}" =~ ^[0-9]+$ || "${EXPECTED_PORT}" -lt 1024 || "${EXPECTED_PORT}" -gt 65535 ]]; then
     log_fail "CRITICAL AUDIT ERROR: Target SSH_PORT ('${EXPECTED_PORT:-<empty>}') is invalid or not configured."
@@ -152,6 +153,20 @@ if command -v ufw >/dev/null 2>&1; then
         else
             log_fail "UFW does NOT have an allow rule for port ${EXPECTED_PORT}/tcp!"
             ((FAILURES++))
+        fi
+        
+        if [[ -n "${EXTRA_PORTS}" ]]; then
+            for port_rule in ${EXTRA_PORTS}; do
+                port_clean=$(echo "${port_rule}" | tr -d ' ')
+                if [[ -n "${port_clean}" ]]; then
+                    if echo "${UFW_STATUS}" | grep -Ei -q "^[[:space:]]*${port_clean}([vV]6)?[[:space:]]+ALLOW"; then
+                        log_pass "UFW whitelists additional rule '${port_clean}'."
+                    else
+                        log_fail "UFW does NOT have an allow rule for '${port_clean}'!"
+                        ((FAILURES++))
+                    fi
+                fi
+            done
         fi
     else
         log_fail "UFW firewall is NOT active ('ufw status' != active)."

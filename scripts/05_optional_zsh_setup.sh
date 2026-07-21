@@ -73,11 +73,12 @@ USER_HOME=$(eval echo "~${ADMIN_USER}")
 log_info "Starting Stage 5 (Optional): Shell Enhancement for user '${ADMIN_USER}' (${USER_HOME})..."
 
 # --- Step 3: Install Essential System Packages & Productivity Tools ---
-log_info "Installing Zsh, Zoxide, Git, Curl, and productivity utilities via apt..."
+log_info "Installing Zsh, Zoxide, Git, Curl, locales, and productivity utilities via apt..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq zsh git curl wget unzip htop ncdu jq zoxide >/dev/null
-log_success "System packages and Zoxide installed."
+apt-get install -y -qq zsh git curl wget unzip htop ncdu jq zoxide locales >/dev/null
+locale-gen en_US.UTF-8 >/dev/null 2>&1 || true
+log_success "System packages, locales (en_US.UTF-8), and Zoxide installed."
 
 # --- Step 4: Install Oh My Zsh (Non-Interactive, under target user context) ---
 OMZ_DIR="${USER_HOME}/.oh-my-zsh"
@@ -148,6 +149,11 @@ cat <<'EOF' > "${ZSHRC_FILE}"
 # ~/.zshrc — Hardened & Optimized Zsh Configuration
 # ==============================================================================
 
+# --- Locale & Environment Setup ---
+# Enforce en_US.UTF-8 locale to prevent Perl/locale warnings when connecting via SSH from clients with local locales
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
@@ -184,7 +190,7 @@ export NVM_DIR="$HOME/.nvm"
 
 # --- Custom System & Maintenance Aliases ---
 # Memory & Swap Reclamation (Requires sudo)
-alias clear-swap='sudo swapoff -a && sudo swapon -a && sync && echo 3 | sudo tee /proc/sys/vm/drop_caches'
+alias clean-swap='sudo swapoff -a && sudo swapon -a && sync && echo 3 | sudo tee /proc/sys/vm/drop_caches'
 
 # System Routine Upgrade (Safe upgrade without removing packages)
 alias sys-upgrade='sudo apt update && sudo apt upgrade -y && (sudo snap refresh 2>/dev/null || true)'
@@ -233,8 +239,8 @@ echo -e "  * Shell        : ${YELLOW}Zsh (${ZSH_BIN})${NC}"
 echo -e "  * Framework    : ${GREEN}Oh My Zsh (${OMZ_DIR})${NC}"
 echo -e "  * Themes       : ${GREEN}Spaceship & Powerlevel10k${NC} (Active: Spaceship)"
 echo -e "  * Plugins      : ${GREEN}git, zsh-autosuggestions, zsh-syntax-highlighting, nvm${NC}"
-echo -e "  * Utilities    : ${GREEN}Zoxide (z command), NVM, htop, ncdu, jq${NC}"
-echo -e "  * Custom Aliases: ${BLUE}clear_swap, sys-upgrade, sys-purge, zoxide init${NC}"
+echo -e "  * Utilities    : ${GREEN}Zoxide (z command), NVM, htop, ncdu, jq, locales (en_US.UTF-8)${NC}"
+echo -e "  * Custom Aliases: ${BLUE}clean-swap, sys-upgrade, sys-purge, zoxide init${NC}"
 echo -e ""
 echo -e "Next Step: Log in as '${ADMIN_USER}' via SSH. Your Zsh environment will load instantly!"
 echo -e "${GREEN}==============================================================================${NC}"

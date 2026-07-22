@@ -333,7 +333,7 @@ if [[ -f "${DAEMON_JSON}" && -s "${DAEMON_JSON}" ]]; then
     fi
     if command -v jq >/dev/null 2>&1; then
         log_info "Merging log rotation limits into existing ${DAEMON_JSON}..."
-        jq '. * {"log-driver": "json-file", "log-opts": (("."log-opts" // {}) + {"max-size": "10m", "max-file": "3"})}' "${DAEMON_JSON}" > "${DAEMON_JSON}.tmp" && mv "${DAEMON_JSON}.tmp" "${DAEMON_JSON}"
+        jq '. * {"log-driver": "json-file", "log-opts": ((.["log-opts"] // {}) + {"max-size": "10m", "max-file": "3"})}' "${DAEMON_JSON}" > "${DAEMON_JSON}.tmp" && mv "${DAEMON_JSON}.tmp" "${DAEMON_JSON}"
     else
         log_warn "jq could not be installed; skipping Docker config overwrite to preserve existing keys."
     fi

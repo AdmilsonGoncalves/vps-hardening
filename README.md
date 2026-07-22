@@ -145,6 +145,11 @@ To prevent containerized applications from causing disk exhaustion attacks via u
   }
   ```
 
+### 5.2. Automated Pruning & Build Cache Cleanup (`06_optional_docker_maintenance.sh`)
+- **Purpose**: Prevents silent storage exhaustion (`No space left on device`) caused by unmanaged Docker build cache (`buildx` layers), dangling images (`<none>:<none>`), and stopped containers.
+- **Standard**: Schedule conservative weekly maintenance (every Sunday at 04:00 AM) that prunes dangling layers and build cache older than 7 days (`168h`) and unused images older than 14 days (`336h`), preserving container-referenced images unless an explicit keep-label rule guarantees rollback-image retention.
+- **Logging**: Dedicated execution log at `/var/log/docker-maintenance.log` managed via weekly `logrotate`.
+
 ---
 
 ## 6. Target Metadata & Summary Posture
@@ -159,3 +164,4 @@ To prevent containerized applications from causing disk exhaustion attacks via u
 | **Intrusion Prevention** | Fail2Ban `sshd` jail enabled via `backend = systemd` (Max 3 retries, 1h ban) |
 | **Security Patching** | Automated daily `unattended-upgrades` with configurable `REBOOT_TIME` in local `TIMEZONE` |
 | **Container Logging** | JSON file rotation bounded at `max-size: 10m` (`3` files max) |
+| **Container Maintenance**| Weekly conservative pruning (`system prune -f`, `builder prune`, `image prune`) with dedicated log |

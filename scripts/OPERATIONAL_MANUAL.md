@@ -44,6 +44,7 @@ graph TD
     E -->|Pre-flight Interlock + SSH/UFW/Fail2Ban/APT/Docker| F(Stage 3 Audit: 04_post_audit.sh)
     F -->|Validates Daemons & Sockets in Runtime| G[Hardened & Validated VPS]
     G -->|Optional Shell Superpowers| H[Stage 5: 05_optional_zsh_setup.sh]
+    G -->|Optional Automated Pruning| I[Stage 6: 06_optional_docker_maintenance.sh]
 ```
 
 ---
@@ -132,6 +133,22 @@ graph TD
 
 ---
 
+### 6. [`06_optional_docker_maintenance.sh`](file:///home/admilson/IdeaProjects/vps-hardening/scripts/06_optional_docker_maintenance.sh) *(Stage 6 Optional: Automated Docker Maintenance)*
+- **Purpose**: Deploys an automated, conservative multi-stage pruning routine (`/usr/local/bin/docker-maintenance.sh`) and weekly cron schedule (`/etc/cron.d/docker-maintenance`) to prevent storage exhaustion (`No space left on device`) caused by build layers, dangling images, and stopped containers.
+- **Key Capabilities**:
+  - Checks if Docker is installed/active, but safely deploys the maintenance routine so any future Docker deployment is protected.
+  - Installs `/usr/local/bin/docker-maintenance.sh` (`700` permissions) with a conservative pruning policy (`system prune -f`, `builder prune --until=168h`, and `image prune -a --until=336h`).
+  - Preserves only images currently referenced by containers, while unreferenced tagged images older than 14 days may be removed by image prune (`-a` is avoided in system prune, and image prune enforces a 14-day window).
+  - Records disk usage before and after cleanup inside `/var/log/docker-maintenance.log`.
+  - Configures weekly log rotation at `/etc/logrotate.d/docker-maintenance` (retains 4 weeks compressed).
+  - Schedules execution every Sunday at 04:00 AM via `/etc/cron.d/docker-maintenance`.
+- **Usage**:
+  ```bash
+  sudo ./06_optional_docker_maintenance.sh
+  ```
+
+---
+
 ## Step-by-Step Operator Runbook
 
 Follow this precise sequence when deploying on a newly provisioned VPS:
@@ -204,7 +221,13 @@ Follow this precise sequence when deploying on a newly provisioned VPS:
    sudo ./05_optional_zsh_setup.sh
    ```
 
-10. **Final Verification**:
+10. **Stage 6 Execution (Optional) — Automated Docker Maintenance**:
+    Install conservative weekly Docker pruning and build cache maintenance:
+    ```bash
+    sudo ./06_optional_docker_maintenance.sh
+    ```
+
+11. **Final Verification**:
     Test connecting from your local workstation using the new obfuscated SSH port. You will land directly in your hardened, supercharged Zsh terminal:
     ```bash
     ssh -p your-preferred-ssh-port vpsadmin@<target-vps-ip>
